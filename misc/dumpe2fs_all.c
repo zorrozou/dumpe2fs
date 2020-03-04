@@ -77,7 +77,6 @@ static const char * program_name = "dumpe2fs";
 static char * device_name = NULL;
 static int hex_format = 0;
 static int blocks64 = 0;
-static int flag = 0;
 static __u32 icount;
 static struct ext3_extent_header *eh;
 static struct ext3_extent_idx *ei;
@@ -99,42 +98,22 @@ static int is_inode_extent_clear(struct ext2_inode * inode)
 	return 1;
 }
 
-static int dump_dir_extent(ext2_extent_handle_t handle, struct ext3_extent_header *eh)
+static int extent_tree_travel(struct ext3_extent_idx *ei)
+{
+	return 1;
+}
+
+static int dump_dir_extent(struct ext3_extent_header *eh)
 {
 	struct ext3_extent *ee;
 	int i;
 	__le32  ee_block;
 	__le16 ee_len;
 	__u64	ee_start;
-	char * buf;
-	__u32 headbuflen = 4;
-	int retval;
 
-/*
-	retval = ext2fs_get_mem(headbuflen, &buf);
-	if (retval)
-		return;
-*/
 	ee = eh + 1;
-//printf("eh->eh_entries: %d\n", eh->eh_entries);
-//printf("eh->eh_max: %d\n", eh->eh_max);
-        if (eh->eh_entries > 340) {
-                return 0;
-        }
 	for (i = 1;i < eh->eh_entries + 1;i++) {
-//		printf("i: %d\n", i);
 		ee_block = ext2fs_le32_to_cpu(ee->ee_block);
-/*
-		retval = io_channel_read_blk64(handle->fs->io,
-				ee_block, 1, buf);
-		// printf("bbbbbbbbbbbbbb\n");
-		if (retval)
-			return retval;
-
-		if (buf != 1852400382) {
-			break;
-		}
-*/
 		ee_len = ext2fs_le32_to_cpu(ee->ee_len);
 		ee_start = ((__u64) (ext2fs_le16_to_cpu(ee->ee_start_hi) << 32) + 
 				(__u64) ext2fs_le32_to_cpu(ee->ee_start));
@@ -144,47 +123,6 @@ static int dump_dir_extent(ext2_extent_handle_t handle, struct ext3_extent_heade
 	return 1;
 }
 
-static int extent_tree_travel(ext2_extent_handle_t handle, struct ext3_extent_header *eh)
-{
-	struct ext3_extent_header *next;
-	struct ext3_extent_idx *ei;
-	int i, retval;
-	char *buf;
-        blk64_t blk;
-        int blocksize;
-
-	blocksize = handle->fs->blocksize;
-	//printf("Enter extent_tree_travel\n");
-	if (eh->eh_depth == 0) {
-	//printf("dump_dir_extent\n");
-		dump_dir_extent(handle, eh);
-	} else if (eh->eh_depth < 4) {
-		flag = 1;
-	printf("eh->eh_depth < 4\n");
-		for (i=1;i<eh->eh_entries+1;i++) {
-			retval = ext2fs_get_mem(blocksize, &buf);
-			if (retval)
-				return;
-
-			memset(buf, 0, blocksize);
-			ei = eh + i;
-			blk = ext2fs_le32_to_cpu(ei->ei_leaf) +
-				((__u64) ext2fs_le16_to_cpu(ei->ei_leaf_hi) << 32);
-			retval = io_channel_read_blk64(handle->fs->io,
-					blk, 1, buf);
-			if (retval)
-				return retval;
-			next = buf; 
-	printf("Recursive\n");
-			extent_tree_travel(handle, next);
-	printf("Recursive end\n");
-		}
-	} else {
-		/* xxxxxxxxxxxxxxx */
-		return 0;
-	}
-	return 1;
-}
 static int prase_ino_extent(ext2_extent_handle_t handle)
 {
 	int i, retval;
@@ -198,33 +136,36 @@ static int prase_ino_extent(ext2_extent_handle_t handle)
 	blocksize = handle->fs->blocksize;
 	eh = handle->inode->i_block;
 
-//	printf("aaaaaaaaaaaaaa\n");
+	// printf("aaaaaaaaaaaaaa\n");
 	retval = ext2fs_get_mem(blocksize, &buf);
 	if (retval)
 		return;
-//		printf("i:%d\n", i);
-//		printf("ix->ei_leaf: %d\n", ix->ei_leaf);
-//		printf("next->eh_max: %d\n", next->eh_max);
-//		printf("next->eh_entries: %d\n", next->eh_entries);
+	// printf("bbbbbbbbbbbbbb\n");
 	memset(buf, 0, blocksize);
 	for (i=1;i<=4;i++) {
 		ix = eh + i;
 
+		//printf("i:%d\n", i);
+		//printf("ix->ei_leaf: %d\n", ix->ei_leaf);
 
 		blk = ext2fs_le32_to_cpu(ix->ei_leaf) +
 			((__u64) ext2fs_le16_to_cpu(ix->ei_leaf_hi) << 32);
 		retval = io_channel_read_blk64(handle->fs->io,
 				blk, 1, buf);
+		// printf("bbbbbbbbbbbbbb\n");
 		if (retval)
 			return retval;
 
 		next = buf;
-	//printf("bbbbbbbbbbbbbb\n");
-		extent_tree_travel(handle, next);
-	//printf("cccccccccccccccccc\n");
-		/* for last extent */
-		if (next->eh_entries < 340) {
-//		printf("dddddddddddddddddddd\n");
+		if (next->eh_depth == 0) {
+			dump_dir_extent(next);
+		} else {
+			/* xxxxxxxxxxxx */
+		}
+		//printf("ccccccccccccc\n");
+		//printf("next->eh_max: %d\n", next->eh_max);
+		//printf("next->eh_entries: %d\n", next->eh_entries);
+		if (next->eh_entries < next->eh_max) {
 			break;
 		}
 	};
@@ -301,9 +242,8 @@ int main(int argc, char **argv)
 
 	imax = fs->super->s_inodes_count;
 	for (icount = 0;icount < imax + 2;icount++) {
-		flag = 0;
-
-		//	printf("%u\n", icount);
+		
+//	printf("%u\n", icount);
 		retval = ext2fs_read_inode(fs, icount,  &inode);
 		if (retval) {
 			com_err(program_name, retval, "%s",
@@ -312,9 +252,6 @@ int main(int argc, char **argv)
 		}
 		if (!is_inode_extent_clear(&inode)) {
 			extent_dump(fs, icount, ei);
-			if (flag) {
-				printf("treeeeeeeeeeeeeeeeee\n");
-			}
 			continue;
 		}
 	}
