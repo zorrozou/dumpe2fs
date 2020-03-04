@@ -141,6 +141,7 @@ static int dump_dir_extent(ext2_extent_handle_t handle, struct ext3_extent_heade
 		printf("%u %u %u %llu\n", icount, ee_block, ee_len, ee_start);
 		ee++;
 	}
+	ext2fs_free_mem(&buf);
 	return 1;
 }
 
@@ -178,6 +179,7 @@ static int extent_tree_travel(ext2_extent_handle_t handle, struct ext3_extent_he
 	printf("Recursive\n");
 			extent_tree_travel(handle, next);
 	printf("Recursive end\n");
+			ext2fs_free_mem(&buf);
 		}
 	} else {
 		/* xxxxxxxxxxxxxxx */
